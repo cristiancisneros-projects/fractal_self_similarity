@@ -26,3 +26,5 @@ x_n = np.array(x_n)
 y_n = np.array(y_n)
 #plt.quiver(x_n[:-1], y_n[:-1], x_n[1:] - x_n[:-1], y_n[1:] - y_n[:-1]) #if this is used, it dramatically messes with the runtime
 plt.show()
+
+#this is useful but its not good past like 9 zooms
