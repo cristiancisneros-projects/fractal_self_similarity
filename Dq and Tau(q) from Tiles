@@ -1,0 +1,145 @@
+import numpy as np
+import h5py
+import os
+import matplotlib 
+import matplotlib.pyplot as plt
+matplotlib.use("Agg")
+import notify 
+from collections import defaultdict
+import sys 
+
+#tiles_dir = "/home/cmcisne3/fractal/henon/slurm/henon_tiles"   #For my data on the cluster, the working directory is here, the one for Windows is above
+tiles_dir="C:/Users/Icarus/Desktop/genome work/henon scripts/henon_tiles"
+chunk=1_000_000
+
+eps_values=[2**(-k) for k in range(3,9)] #The range here is the size of the boxes we utilize in 2^-k, where each box is 1/8 by 1/8 up to the 2^-(k-1) by 2^-(k-1) sized boxes
+q_values=np.linspace(-5,5,1001) #The space of q spans the left to right interval, where q is a parameter which probes the distribution. Negative q corresponds to low density & sparse regions, larger q corresponds to denser regions
+notify.telegram("Tau(q) and D(q) computation started")
+#We have to denote that the range for the epsilon values is extremely sensitive and may absolutely annihilate the plots given that we choose too low of an epsilon. The analysis over this subject takes the limits as these
+#objects go to infinity in many cases-- epsilon goes to 0. Given that we have to utilize numerical methods in the computation for multifractal analysis, we have to take into consideration that the number of points ought to be
+#extremely large, and that the epsilon needs to become reasonably small
+
+#For Dq and Tau(q), these functions are convex; D(q) is nonincreasing in q, Tau(q) is nondecreasing in q. 
+#For a monofractal, Dq is constant and tau(q) is linearly increasing in q by Dq=(q-1)Tau(q)
+#I denote that for 10 million points, the lowest epsilon being 2^-8 is the last plot in which I observe a strictly nonincreasing Dq
+#I have 10 million points, for 2^-8, we have 65536 boxes
+
+tile_files=sorted([ 
+    os.path.join(tiles_dir, f)
+    for f in os.listdir(tiles_dir)
+    if f.endswith(".h5")
+])
+
+xmin=ymin=-1.5 #setting bounds on the size of the image so we may construct box counting
+xmax=ymax=1.5 
+total_points=0 #initialize the number of points
+
+for tile in tile_files:
+    with h5py.File(tile, "r") as f:
+        x_ds=f["x"]
+        y_ds=f["y"]
+        N=len(x_ds)
+        total_points+=N
+
+        for a in range(0, N, chunk):
+            hi = min(a+chunk, N)
+            xs=x_ds[a:hi]
+            ys=y_ds[a:hi]
+
+            xmin=min(xmin,xs.min())
+            ymin=min(ymin,ys.min())
+            xmax=max(xmax,xs.max())
+            ymax=max(ymax,ys.max())
+
+box_counts= [defaultdict(int) for _ in eps_values]
+
+for tile in tile_files:
+    with h5py.File(tile, "r") as f:
+        x_ds=f["x"]
+        y_ds=f["y"]
+        N=len(x_ds)
+
+        for b in range(0,N, chunk):
+            hi=min(b+chunk, N)
+            xs=x_ds[b:hi]
+            ys=y_ds[b:hi]
+
+            xs_norm=(xs - xmin) /(xmax - xmin)
+            ys_norm=(ys-ymin)/ (ymax-ymin) #Normalizes the points to fit within the unit square
+
+            for k, eps in enumerate(eps_values):
+                ix = np.floor(xs_norm/eps).astype(int)
+                iy=np.floor(ys_norm/eps).astype(int)
+
+                for j in range(len(ix)):
+                    box_counts[k][(ix[j], iy[j])]+=1 
+
+tau_q=[]
+q_used=[]
+
+for q in q_values:
+    log_eps=[]
+    log_Zq=[]
+
+    if np.isclose(q, 1.0):
+        tau_q.append(0.0) #Tau(0)=0, 
+        q_used.append(q)
+        continue
+    for k, eps in enumerate(eps_values):
+        n_k=np.array(list(box_counts[k].values()), dtype=np.float64)
+        p_k=n_k/total_points
+
+        p_k=p_k[p_k>0]
+
+        if q==0:
+            Zq=len(p_k)
+        else:
+            Zq= np.sum(p_k**q)
+        if Zq >0:
+            log_eps.append(np.log(eps))
+            log_Zq.append(np.log(Zq))
+    if len(log_eps) <2:
+        continue
+
+    slope, _ = np.polyfit(log_eps, log_Zq, 1) #We define Tau(q) in this way from the partition function
+    tau_q.append(slope)
+    q_used.append(q)
+
+tau_q=np.array(tau_q)
+q_used=np.array(q_used)
+np.savetxt(f"tau_q.txt", tau_q)
+np.savetxt(f"q.txt", q_used)
+
+D_q=np.zeros_like(tau_q)
+for c, q in enumerate(q_used):
+    if np.isclose(q, 1.0):
+        if 0<c<len(q_used)-1:
+            dq= q_used[c+1]-q_used[c-1]
+            D_q[c]=(tau_q[c+1]-tau_q[c-1])/dq 
+        else:
+            D_q[c]=np.nan
+    else:
+        D_q[c]=tau_q[c]/(q-1)
+
+plt.figure()
+plt.plot(q_used, tau_q, "o-", lw=2)
+plt.xlabel("q")
+plt.ylabel("tau(q)")
+plt.grid(True)
+plt.savefig(f"tau_q.png", dpi=300)
+plt.close()
+
+plt.figure()
+plt.plot(q_used, D_q, "o-", lw=2)
+plt.xlabel("q")
+plt.ylabel("D(q)")
+plt.grid(True)
+plt.savefig(f"D_q.png", dpi=300)
+plt.close()
+
+notify.telegram("Computations complete for plotting Tau(q), D(q)")
+notify.send_file(f"tau_q.png", caption="tau(q)")
+notify.send_file(f"D_q.png", caption=("D(q)"))
+
+
+
