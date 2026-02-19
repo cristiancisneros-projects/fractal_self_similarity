@@ -1,0 +1,32 @@
+import os
+import h5py
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import notify
+
+TILE_DIR = "C:/Users/Icarus/Desktop/genome work/henon scripts/henon_tiles"
+#TILE_DIR = "/home/cmcisne3/fractal/henon/slurm/henon_tiles"   #For my data on the cluster, the working directory is here, the one for Windows is above
+TILE_NAME = "tile_00000.h5" #can choose a tile to plot; works arbitrarily and they return (visually, not pointwise) the same exact plot
+tile_path = os.path.join(TILE_DIR, TILE_NAME)
+
+N_plot = 50_000   # number of points to plot, each tile has 1million points but data becomes dense, for relatively "decent" image without considering extremely dense zooming in, this works.
+
+with h5py.File(tile_path, "r") as f:
+    x = f["x"][:N_plot]
+    y = f["y"][:N_plot]
+
+
+plt.figure(figsize=(6, 6))
+plt.scatter(x, y, s=0.1, alpha=0.5, c="k")
+plt.axis("equal")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.title("Hénon Attractor")
+plt.tight_layout()
+plt.savefig("henon_tile_00000.png", dpi=300)
+plt.close()
+
+notify.send_file("henon_tile_00000.png") #just sends it to telegram so I can see it; this code is utilized on the cluster primarily, displaying the image doesn't work on terminal so using "Agg" & sending it to be
+#viewed externally operates well to 
