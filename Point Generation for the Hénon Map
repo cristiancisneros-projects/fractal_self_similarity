@@ -1,0 +1,54 @@
+#To start, for the Henon map, its of form x_n+1=1+y_n-ax_n^2, y_n+1=bx_n where a=1.4, b=0.3 This code was utilized on the Sabine Cluster @ University of Houston in order to generate the points
+#and tiles for the map 
+#notify is a file which sends the results to a telegram bot which sends messages & images via telegram API rather than utilizing Slurm to send emails.
+import numpy as np
+import h5py
+import os
+import sys
+import time
+import notify
+
+total_points=100_000_000
+tile_size=1_000_000
+
+a=1.4
+b=0.3
+
+x=0
+y=0
+
+def henon_chunk(a,b,x,y,n):
+    xs=np.empty(n)
+    ys=np.empty(n)
+
+    for j in range(n):
+        x_next=1+y-a* x**2
+        y_next=b*x
+        x, y= x_next, y_next
+        xs[j] = x
+        ys[j] = y
+    return x, y, xs, ys
+
+outdir=f"henon_tiles"
+os.makedirs(outdir, exist_ok=True)
+
+tile_idx = 0
+points_written = 0
+
+while points_written < total_points:
+    n = min(tile_size, total_points - points_written)
+
+    x, y, xs, ys = henon_chunk(a, b, x, y, n)
+
+    filename=f"{outdir}/tile_{tile_idx:05d}.h5"
+    with h5py.File(filename, "w") as f:
+        f.create_dataset("x", data=xs, compression="lzf")
+        f.create_dataset("y", data=ys, compression="lzf")
+
+    points_written+=n
+    tile_idx +=1
+notify.telegram("Henon tiles created")
+
+
+
+notify.telegram("Henon tiles created")
