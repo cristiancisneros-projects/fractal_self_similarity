@@ -1,0 +1,124 @@
+import numpy as np
+import h5py
+import os
+import sys
+from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import ConvexHull
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import notify
+
+
+#sim = int(sys.argv[1])
+#TILE_DIR = f"henon_tiles" #This subsection is redundant at the most given that the architecture is structured towards the initial cluster code
+sim=1 
+TILE_DIR = "C:/Users/Icarus/Desktop/genome work/henon scripts/henon_tiles"
+N_SAMPLE = 1_000_000          # large n required for NN, in current instance, Utilizing 1 million points in this moment
+C_VALUES = np.linspace(-5.5, 20, 1234)
+C_VALUES = C_VALUES[C_VALUES != 0.0]
+
+OUTDIR = "nn_falpha"
+os.makedirs(OUTDIR, exist_ok=True)
+
+notify.telegram("Nearest-neighbor f(alpha) computation started.")
+
+
+xs, ys = [], []
+for fname in os.listdir(TILE_DIR):
+    if fname.endswith(".h5"):
+        with h5py.File(os.path.join(TILE_DIR, fname), "r") as f: #Load the data
+            xs.append(f["x"][:])
+            ys.append(f["y"][:])
+
+x = np.concatenate(xs)
+y = np.concatenate(ys)
+
+xmin, xmax = x.min(), x.max()
+ymin, ymax = y.min(), y.max()
+
+x = (x - xmin) / (xmax - xmin) #Normalize the data
+y = (y - ymin) / (ymax - ymin)
+
+pts = np.column_stack((x, y))
+
+rng = np.random.default_rng(sim)
+idx = rng.choice(len(pts), size=N_SAMPLE, replace=False)
+pts = pts[idx]
+
+
+
+nbrs = NearestNeighbors(n_neighbors=2, algorithm="kd_tree").fit(pts)
+distances, _ = nbrs.kneighbors(pts)   #Computing nearest neighbors
+d = distances[:, 1]    # exclude self-distance
+
+
+
+D_c = []  #Utilizing the nearest neighbor method from https://pubs.aip.org/aip/cha/article-abstract/24/3/033106/135578/Fractal-dimension-computation-from-equal-mass?redirectedFrom=fulltext
+q_vals = []
+tau_vals = []
+
+for c in C_VALUES:
+    Mc = np.mean(d**c)
+    if Mc <= 0:
+        continue
+
+    Dc = (c * np.log(N_SAMPLE)) / np.log(Mc)
+    if not np.isfinite(Dc):
+        continue
+
+    q = 1.0 + c / Dc
+    tau = -c
+
+    D_c.append(Dc)
+    q_vals.append(q)
+    tau_vals.append(tau)
+
+q_vals = np.array(q_vals)
+tau_vals = np.array(tau_vals)
+
+
+
+pts_qtau = np.column_stack((q_vals, tau_vals))
+hull = ConvexHull(pts_qtau)
+
+hull_pts = pts_qtau[hull.vertices]
+hull_pts = hull_pts[np.argsort(hull_pts[:, 0])]  #Taking the convex hull in order to produce a tau(q), and then legendre transform that to some f(alpha)
+
+q_h = hull_pts[:, 0]
+tau_h = hull_pts[:, 1]
+
+
+
+alpha = np.gradient(tau_h, q_h)
+f_alpha = q_h * alpha - tau_h #legendre transform
+
+
+np.savez(
+    os.path.join(OUTDIR, f"nn_falpha_sim{sim}.npz"),
+    alpha=alpha,
+    f_alpha=f_alpha,
+    q=q_h,
+    tau=tau_h,
+)   #saves data for additional & extraneous analysis (Comparing results from Box Counting, Nearest Neighbor, k-Neighbor, and Chhabra-Jensen Methods)
+alpha= alpha
+f_alpha= f_alpha
+plt.figure(figsize=(6,5))
+plt.plot(alpha, f_alpha, "k-", lw=2)
+plt.xlabel(r"$\alpha$")
+plt.ylabel(r"$f(\alpha)$")
+plt.title("Nearest-Neighbor Multifractal Spectrum")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+
+plt.savefig(os.path.join(OUTDIR, f"nn_falpha_sim{sim}.png"), dpi=300)
+plt.close()
+notify.telegram("Nearest-neighbor f(alpha) computation finished.")
+#notify.send_file(
+    #"/home/cmcisne3/fractal/henon/slurm/nn_falpha/nn_falpha_sim1.png",
+    #caption="NN f(alpha) finished"
+#)
+notify.send_file(
+    "C:/Users/Icarus/Desktop/genome work/henon scripts/nn_falpha/nn_falpha_sim1.png",
+    caption="NN f(alpha) finished"
+)
