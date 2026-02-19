@@ -1,0 +1,41 @@
+#This script follows the Dq & Tau(q) From Tiles where we NEED the q.txt and tau.txt From these, we utilize the thermodynamic formalism in which f(alpha)=q*alpha-tau(q(alpha)), and alpha=d(tau(q))/dq
+#We justify this now by tau(q) is convex, and f(alpha) is concave where f(alpha) prescribes the multifractal spectrum of the Attractor given these conditions
+#Alpha is a local scaling exponent; it describes how fast the measure shrinks near a point. Low alpha corresponds to dense regions, high alpha corresponds to sparse regions
+#f(alpha) is the fractal dimension of the set of points with scaling exponent alpha def E_α​={x:α(x)=α}.
+#Then, f(α)=dim_H​(Eα​) The Hausdorff dimension of that level set
+
+#We have to denote another source of error in this measurement. The dataset in which these tau and q come from is from Box Counting, which underperforms structurally for negative q
+#"Box-counting underperforms and becomes unstable for negative q due to empty boxes and noise amplification."
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import sys
+import notify
+import matplotlib.pyplot as plt
+import os
+
+notify.telegram("Computing f(alpha)")
+#INPUT_DIR = "/home/cmcisne3/fractal/henon/slurm/output"
+INPUT_DIR = "C:/Users/Icarus/Desktop/genome work/henon scripts/"
+tau_path = os.path.join(INPUT_DIR, "tau_q.txt")
+q_path   = os.path.join(INPUT_DIR, "q.txt")
+tau = np.loadtxt(tau_path)
+q = np.loadtxt(q_path)
+
+
+alpha=np.gradient(tau,q)
+f_alpha=alpha*q-tau
+
+trim=1
+alpha=alpha[trim:-trim]
+f_alpha=f_alpha[trim:-trim]
+
+plt.figure(figsize=(6,4))
+plt.plot(alpha, f_alpha, 'o-', lw=1)
+plt.xlabel(r'$\alpha$')
+plt.ylabel(r'$f(\alpha)$')
+plt.title('Box Counting')
+plt.grid(True)
+plt.savefig(f"legendre", dpi =300)
+notify.send_file(f"legendre.png", caption = f"f(alpha) vs. alpha")
